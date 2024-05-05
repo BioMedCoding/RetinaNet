@@ -1,0 +1,23 @@
+experimentName: process_completi
+trialConcurrency: 1
+maxExperimentDuration: 100h
+maxTrialNumber: 100
+trainingService:
+  platform: local
+  useActiveGpu: true
+  gpuIndices: 0
+searchSpaceFile: ./search_space.json
+useAnnotation: false
+tuner:
+  name: TPE
+  classArgs:
+    optimize_mode: maximize 
+trialCodeDirectory: .
+trialCommand: python3 allenamento_rete_5.py
+experimentWorkingDirectory: ./results
+trialGpuNumber: 1
+assessor:
+  name: Medianstop
+  classArgs:
+    optimize_mode: maximize  
+    start_step: 6
