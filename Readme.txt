@@ -1,3 +1,6 @@
+This project requires to translate every comment present, a use guide and a general code update, so it's still a work in progress
+
+
 Il file da eseguire per segmentare la immagini è Submission.ipynb, ovvero uno script Google Colab.
 
 
