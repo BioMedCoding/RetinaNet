@@ -8,45 +8,48 @@ from scipy.ndimage import gaussian_filter
 from skimage import io, morphology, measure, img_as_ubyte
 
 # =====================================================================================================
-#INFO CODICE
+# CODE INFO
 '''
-Questo codice ha come obiettivo la suddivisione del dataset originale in traning, validation e test set. La divisione viene fatta in maniera randomica usando un'apposita funzione di skLearn
-Dopo aver diviso in base al nome le varie immagini, si dividono le immagini del test set, andandole semplicemente a copiare nell'apposita cartella senza alcune operazione di preprocess, in modo
-da poterle usare per testare la pipeline completa del codice finale. Successivamente invece ci si occupa della creazione di training e validation set, in questo caso quindi si applica il preproces
-definito e si dividono le immagini in blocchi da 256x256 pixel. 
-Per studiare appieno gli effetti degli vari stage del preprocess, le immagini vengono salvata non solo al termine del preprocess completo, ma anche dopo i vari step intermedi. Questo permetterà così
-di andare a testare singolarmente gli effetti di ogni step, per verificarne pienamente l'efficacia.
+This code aims to split the original dataset into training, validation, and test sets. The division is done randomly using a specific skLearn function. 
+After dividing the images based on their names, the test set images are simply copied into the appropriate folder without any preprocessing, 
+so they can be used to test the complete pipeline of the final code. Subsequently, the creation of the training and validation sets is addressed; 
+in this case, the defined preprocessing is applied, and the images are divided into 256x256 pixel blocks. To fully study the effects of 
+the various preprocessing stages, the images are saved not only at the end of the complete preprocessing but also after the various intermediate steps.
+This will allow for individually testing the effects of each step to fully verify their effectiveness.
 '''
 # =====================================================================================================
 
 
 
 # =====================================================================================================
-# Definizione funzioni usate
+# FUNCTION DEFINITION
 # =====================================================================================================
 
 def sigmoid(x):
     """
-    Funzione per il calcolo di una semplice funzione sigmoide, richiamata da altre funzioni in seguito
-    Parametri: 
-    - x: parametro da passare alla funzione sigmoide
-    
-    Restituisce:
-    - parametro processato tramite sigmoide
+Function for calculating a simple sigmoid function, called by other functions later.
+
+    Parameters:
+        - x: parameter to pass to the sigmoid function
+ 
+    Returns:
+        - parameter processed through the sigmoid function
     """
     return 1 / (1 + np.exp(-x))
 
 def adaptive_gamma_lightening(img, block_size, gamma_min, gamma_max):
     """
-    Funzione per il calcolo adattivo localizzato della funzione gamma
-    Parametri: 
-    - img: immagine su cui lavorare
-    - block_size: dimensione dei blocchi in cui viene divisa l'immagine per il calcolo locale della funzione di gamma
-    - gamma_min: valore minimo che può assumere la gamma calcolata
-    - gamma_max: valore massimo che può assumere la gamma calcolata
-    
-    Restituisce:
-    - corrected_img: immagine con gamma modificata e valori compresi tra 0 e 1
+Function for localized adaptive calculation of the gamma function
+
+    Parameters:
+
+        - img: image to process
+        - block_size: size of the blocks into which the image is divided for local gamma calculation
+        - gamma_min: minimum value that the calculated gamma can take
+        - gamma_max: maximum value that the calculated gamma can take
+    Returns:
+
+        - corrected_img: image with modified gamma values ranging between 0 and 1
     """
       
     h, w = img.shape[:2]
@@ -73,14 +76,14 @@ def adaptive_gamma_lightening(img, block_size, gamma_min, gamma_max):
 
 def divide_into_blocks(img, block_size=(256,256)):
     """
-    Funzione per dividere in sottoimmagine l'immagine
-    
-    Parametri: 
-    - img: immagine su cui lavorare
-    - block_size: dimensione dei blocchi in cui viene divisa l'immagine per il calcolo locale della funzione di gamma
-    
-    Restituisce:
-    - blocks: lista contenente le sottoimmagini in cui si è divisa l'immagine originale
+    Function to divide the image into sub-images
+
+        Parameters:
+        - img: image to process
+        - block_size: size of the blocks into which the image is divided for local gamma calculation
+
+    Returns:
+        - blocks: list containing the sub-images into which the original image has been divided
     """
     blocks = []
     for i in range(0, img.shape[0], block_size[0]):
@@ -93,14 +96,15 @@ def divide_into_blocks(img, block_size=(256,256)):
 
 def save_image(image, image_path, results_folder):
     """
-    Funzione per il salvataggio dell'immagine, sia in forma completa che dividendola in blocchi e salvando nelle rispettive cartelle
-    Parametri: 
-    - image: immagine da salvare
-    - image_path: percorso completo dell'immagine, utile per isolare il nome dell'immagine
-    - results_folder: percorso dove salvare l'immagine
-    
-    Restituisce:
-    - None (esegue solamente salvataggio, senza restituire nulla)
+    Function to save the image, either in complete form or by dividing it into blocks and saving them in their respective folders
+
+    Parameters:
+        - image: image to save
+        - image_path: full path of the image, useful for isolating the image name
+        - results_folder: path where the image will be saved
+
+    Returns:
+        - None (only performs saving, does not return anything)
     """
     
     image = np.clip(image,0,1)
@@ -124,14 +128,15 @@ def save_image(image, image_path, results_folder):
 
 def preprocess(image_path, mask_path, results_folder):
     """
-    Funzione per eseguire il preprocess dell'immagine
-    Parametri: 
-    - image_path: percorso completo dell'immagine
-    - mask_path: percorso completo della maschera relativa all'immagine
-    - results_folder: percorso dove salvare l'immagine
-    
-    Restituisce:
-    - None (esegue solamente salvataggio, senza restituire nulla)
+    Function to perform image preprocessing
+
+    Parameters:
+        - image_path: full path of the image
+        - mask_path: full path of the mask related to the image
+        - results_folder: path where the image will be saved
+
+    Returns:
+        - None (only performs saving, does not return anything)
     """
     
     image = io.imread(image_path)
@@ -210,13 +215,13 @@ def preprocess(image_path, mask_path, results_folder):
 # Definizione funzioni utilizzate in seguito
 def min_max_normalization(matrix):   #Funzione di normalizzazione usata in seguito
     """
-    Normalizza una matrice utilizzando la normalizzazione Min-Max.
-    
-    Parametri:
-    - matrix: ndarray, la matrice da normalizzare
+    Normalize a matrix using Min-Max normalization.
 
-    Restituisce:
-    - matrix_normalizzata: ndarray, la matrice normalizzata
+    Parameters:
+        - matrix: ndarray, the matrix to normalize
+
+    Returns:
+        - normalized_matrix: ndarray, the normalized matrix
     """
     min_value = np.min(matrix)
     max_value = np.max(matrix)
@@ -227,11 +232,19 @@ def min_max_normalization(matrix):   #Funzione di normalizzazione usata in segui
 
 
 def get_file_paths(directory):
-    # Funzione per generare una lista di percorsi completi dei file contenuti nella directory passta come parametro
+    '''
+    Function to generate a list of full file paths contained in the directory passed as a parameter
+
+    Parameters:
+        - directory: path of the directory to scan
+
+    Returns:
+        - file_paths: list of full file paths contained in the directory
+    '''
     return [os.path.join(directory, file) for file in os.listdir(directory)]
 
 # =====================================================================================================
-# Definizione percorsi
+# PATHS DEFINITION
 # =====================================================================================================
 working_folder = os.path.dirname(os.path.abspath(__file__))
 original_dataset = working_folder+'/Dataset/RETINA/'
@@ -248,7 +261,7 @@ original_masks = get_file_paths(original_masks_dir)
 
 
 # =====================================================================================================
-# Preparazione dataset
+# DATASET DIVISION AND PREPARATION
 # =====================================================================================================
 train_image_paths, temp_image_paths, train_mask_paths, temp_mask_paths = train_test_split(original_images, original_masks, test_size=0.3, random_state=2023)
 val_image_paths, test_image_paths, val_mask_paths, test_mask_paths = train_test_split(temp_image_paths, temp_mask_paths, test_size=0.5, random_state=2023)
@@ -260,13 +273,13 @@ test_images_names = [os.path.basename(path) for path in test_image_paths]
 
 
 # =====================================================================================================
-# Salvataggio diretto delle immagini del test set, così da poter testare completamente il codice finale
+# TEST SET
 # =====================================================================================================
 test_folder = working_folder+'/Dataset'
 if not os.path.exists(test_folder):
     os.makedirs(test_folder)
 
-# Ciclo per salvare le IMMAGINI
+# Cycle to save the images
 files_copied = 0  
 for file_name in tqdm(test_images_names, desc="Immagini test set"):
     source_file = os.path.join(original_images_dir, file_name)
@@ -275,7 +288,7 @@ for file_name in tqdm(test_images_names, desc="Immagini test set"):
         os.makedirs(images_folder)
     destination_file = os.path.join(images_folder, file_name)
     
-    # Controlla se il file esiste nella cartella sorgente prima di copiarlo
+    # Check if the file exists in the source folder before copying it
     if os.path.exists(source_file):
         try:
             shutil.copy(source_file, destination_file)
@@ -286,16 +299,16 @@ for file_name in tqdm(test_images_names, desc="Immagini test set"):
         print(f"Il file {file_name} non esiste in {original_images}")
 print(f"Totale file copiati nella cartella test/Original: {files_copied}")
 
-# Ciclo per salvare le MASCHERE
+# Cycle to save masks
 files_copied = 0  
-for file_name in tqdm(test_images_names, desc="Maschere test set"): # I nomi devono essere comuni tra maschere e immagini, per cui si usa unica variabile
+for file_name in tqdm(test_images_names, desc="Maschere test set"): # The names must be common between masks and images, so a single variable is used
     source_file = os.path.join(original_masks_dir, file_name)
     mask_folder = test_folder+'/test/Ground_truth'
     if not os.path.exists(mask_folder):
         os.makedirs(mask_folder)
     destination_file = os.path.join(mask_folder, file_name)
     
-    # Controlla se il file esiste nella cartella sorgente prima di copiarlo
+    # Check if the file exists in the source folder before copying it
     if os.path.exists(source_file):
         try:
             shutil.copy(source_file, destination_file)
@@ -311,7 +324,7 @@ print('Terminata sezione per salvataggio test set')
 
 
 # =====================================================================================================
-# Sezione per il processing e divisione in blocchi delle immagini per training set
+# TRAINING SET
 # =====================================================================================================
 print('Avvio preparazione training set')
 for file_name in tqdm(train_images_names, desc="Elaborazione training set"):
@@ -328,7 +341,7 @@ for file_name in tqdm(train_images_names, desc="Elaborazione training set"):
             
             
 # =====================================================================================================
-# Sezione per il processing e divisione in blocchi delle immagini per validation set
+# VALIDATION SET
 # =====================================================================================================
 print('Avvio preparazione validation set')
 for file_name in tqdm(validation_images_names, desc="Elaborazione validation set"):

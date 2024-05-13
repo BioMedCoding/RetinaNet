@@ -20,34 +20,37 @@ from multiprocessing import Pool
 from pathlib import Path
 
 # =====================================================================================================
-#INFO CODICE
+# CODE INFO
 '''
-Questo codice è il codice utilizzato per valutare i risultati dell'inference eseguita da una rete secondo le metriche utili a questa challenge (inclusa anche l'IoU).
-Vista il funzionamento previsto dei vari script, in questo caso la valutazione viene eseguita usando tutte le immagini presenti nelle varie sottocartelle relative alla cartella data come riferimento,
-utilizzando il multiprocess per velocizzare l'analisi in caso di più sottocartelle, relative quindi a più trial o esperimenti. Al termine dell'analisi i valori vengono poi scritti
-all'interno di un file con una precisa struttura, creata per poter agevolare la successiva analisi tramite Excel oppure dall'apposito script "Analisi_risultati_rev5", che permette
-di analizzare automaticamente tutti i risultati relativi ai vari trial per creare una classifica che ordini i vari trial/esperimenti in base alla qualità dei risultati
+This code is used to evaluate the inference results performed by a network according to the choosen metrics. 
+Given the intended operation of the various scripts, in this case, the evaluation is performed using all the images present in the various 
+subfolders relative to the reference folder. Multiprocessing is used to speed up the analysis in the case of multiple subfolders, 
+which correspond to multiple trials or experiments. At the end of the analysis, the values are then written to a file with a specific structure, 
+created to facilitate subsequent analysis via Excel or the specific script "Results_analysis", which allows automatic analysis 
+of all results related to the various trials to create a ranking that orders the various trials/experiments based on the quality of the results.
+
+Uncomment the section at line 274 to evaluate a single folder. If nothing is changed, multiprocess analysis is the standard
+Uncomment also 96 and 171 if single folder analysis is selected
 '''
 # =====================================================================================================
 
-# Definizione cartella di lavoro
+# working path definition
 working_folder = os.path.dirname(os.path.abspath(__file__))
-#gt_dir = working_folder+"/Dataset/test/Ground_truth"
+
+# ground truth definition, the images inside this folder will be used as reference to calculate the metrics
 gt_dir = working_folder+"/Dataset/RETINA/Ground_truth"
 
 # ==============================================================
-# DEFINIZIONE PARAMETRI UTILI
+# USEFUL PARAMETERS DEFINITION
 
-#cartella_maschere = working_folder + '/Output_final_code/'
-#cartella_maschere = working_folder + '/Output_test/'
-cartella_maschere = working_folder + '/Output_per_tabelle'    # Questa sarà la cartella dove andare ad applicare il multiprocess
+# This is the folder in which there are multiple trials to evaluate using multiprocess
+cartella_maschere = working_folder + '/Output_per_tabelle'    
 
-# N.B. Righe 93 e 156 vanno commentate quando si esegue l'analisi di immagini con postprocess (debito tecnico)
+images_have_postprocess = True
 
-# Alla riga 268 si trova invece il codice necessario per analizzare una cartella specifica
 # ==============================================================
 
-# Funzione per il calcolo della metrica IoU
+# Function to compute the IoU metric
 def IOU(outputs, labels):
     
     # Convert PyTorch tensors to NumPy if necessary
@@ -69,7 +72,7 @@ def IOU(outputs, labels):
     union = np.logical_or(labels, outputs)
     # Compute IOU
     somma_unione = np.sum(union)
-    if somma_unione >0:                                 #Modifica alla funzione effettuata per evitare NaN in caso di assenza di maschere
+    if somma_unione >0:                             # This is done to avoid NaN in case of empty masks
         iou = np.sum(intersection) / somma_unione
         #if iou==0:           
         #    iou=0.001        
@@ -77,19 +80,19 @@ def IOU(outputs, labels):
         iou=1
     return iou
 
-# Funzione per il calcolo del Dice
+# Function to compute the Dice metric
 def dice(outputs, labels):
     intersection = torch.sum(outputs * labels)
     union = torch.sum(outputs) + torch.sum(labels)
     
-    if union >0:                                 #Modifica alla funzione effettuata per evitare NaN in caso di assenza di maschere
+    if union >0:                                    # This is done to avoid NaN in case of empty masks
         dice_score = 2.0 * intersection / (union)    
     else:
         dice_score=1.0
         
     return dice_score
 
-# Funzione per il calcolo delle metriche IoU e Dice, compreso il valore medio sopra 80 percentile e sotto 20 percentile
+# Function called to avaluate both metrics, considering also 80th and 20th percentile
 def evaluate_metrics(pred_dir, gt_dir):
     #pred_dir = pred_dir + '/noPost'
     pred_filenames = os.listdir(pred_dir)
@@ -109,10 +112,13 @@ def evaluate_metrics(pred_dir, gt_dir):
         
         base_filename, file_extension = os.path.splitext(filename)
         
-        #if file_extension.lower() == '.jpg':  # Controlla se l'estensione è .jpg indipendentemente dal caso
-        #    gt_filename = base_filename + '.png'  # Sostituisci con .tif
-        #else:
-        gt_filename = filename  # Se l'estensione non è .jpg, lascia il nome del file inalterato, fallo rientrare se attivi costrutti sopra
+        # This section can be used in case of a system with different images format
+        '''
+        if file_extension.lower() == '.jpg':  # Check if file extension is .jpg
+            gt_filename = base_filename + '.png'  # Substitute with .tif
+        else:
+        '''
+        gt_filename = filename  
         gt_path = os.path.join(gt_dir, gt_filename)
         
         print(gt_path)
@@ -159,7 +165,7 @@ def evaluate_metrics(pred_dir, gt_dir):
     }
     return metrics
 
-# Funzione per il calcolo degli errori J2J e J2E, compreso nei valori percentili come indicato in precedenza
+# Function to compute the J2J (Junction to Junction) and J2E (Junction to End) errors
 def evaluate_errors(pred_dir, gt_dir):
     #pred_dir = pred_dir + '/noPost' 
     results_pred = {}
@@ -234,8 +240,7 @@ def evaluate_errors(pred_dir, gt_dir):
     
     return errors
 
-
-# Funzione per scrivere i risultati in un file con file locking (meccanismo che garantisce la scrittura senza problemi sullo stesso file da parte dei vari processi)
+# Function to write results in a dedied file, with a file locking mechanism to avoid problem in case of multiprocess
 def write_results_to_file(pred_dir, results, file_path):
     lock_path = file_path + ".lock"
     lock = SoftFileLock(lock_path)
@@ -243,15 +248,15 @@ def write_results_to_file(pred_dir, results, file_path):
     with lock:
         try:
             with open(file_path, 'a') as file:
-                file.write(f"{os.path.basename(pred_dir)}: \n")  # Scrive pred_dir come prima riga
+                file.write(f"{os.path.basename(pred_dir)}: \n")  # Write pred_dir as first line
                 for key, value in results.items():
                     file.write(f"{key}: {value}\n")
-                file.write('\n\n\n')  # Aggiunge una riga vuota dopo ogni coppia chiave-valore
+                file.write('\n\n\n')  # Add a blank paragraph after each line
             print(f"Results successfully written to {file_path}")
         except Exception as e:
             print(f"An error occurred while writing to the file: {e}")
 
-# Funzione per processare ogni sottocartella (inclusa la valutazione e la scrittura dei risultati)
+# Function to process every subfolder (including results evaluation and writing)
 def process_folder(pred_dir, gt_dir):
     path_temp = Path(pred_dir)
     general_folder = path_temp.parent
@@ -262,7 +267,7 @@ def process_folder(pred_dir, gt_dir):
     combined_results = {**evaluation_metrics, **evaluation_results}
     write_results_to_file(pred_dir, combined_results, file_path)
     
-# Funzione richiamata per il process della directory
+# Function to process the directory
 def process_directory(pred_dir, gt_dir):
     if os.path.isdir(pred_dir):
         process_folder(pred_dir, gt_dir)
@@ -270,17 +275,18 @@ def process_directory(pred_dir, gt_dir):
         print(f"The path {pred_dir} is not a directory.")
 
 
-# Parte per esecuzione singola della funzione per process
+# Uncomment this section to process a single folder
 '''
 pred_dir = working_folder + '/Output_metriche_val/us1zgf45_AuZf5'
 process_directory(pred_dir,gt_dir)
 '''
 # Ottieni la lista delle sottocartelle in cartella_maschere
+# Get a list of all subfolders in the cartelle_maschere folder (the folder intended to be analysed)
 subfolders = [os.path.join(cartella_maschere, o) for o in os.listdir(cartella_maschere) 
               if os.path.isdir(os.path.join(cartella_maschere, o))]
 
 all_params = list(zip([d for d in subfolders], [gt_dir] * len(subfolders)))
-num_workers = 3   # Numero di processi da avviare in parallelo
+num_workers = 3   # Number of processes to be used in parallel
 
 # Process the combinations in parallel using Pool
 with Pool(processes=num_workers) as pool:
