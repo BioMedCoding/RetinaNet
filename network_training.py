@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-import nni                                 # Perch'e funzioni senzaz problemi serve versione 2.7 mi pare, vedu docker lava_experiments di franzhd su Github
+import nni                                
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import torch
@@ -20,43 +20,41 @@ import torch.nn.functional as F
 from datetime import datetime
 import inspect
 
-# Usando la combined_loss, alfa rappresenta l'importanza data alla dice_loss
-
 # =====================================================================================================
 #INFO CODICE
 '''
-Questo codice ha come obiettivo l'allenamento della rete neurale, sfruttando nni per la gestione automatica degli esperimenti e una ricerca ottimizzata dei valori del search_space,
-contenente vari parametri relativi alla gestione della rete. L'esecuzione richiede nni versione 2.7 e 2 file (config..yml e search_space.json) e viene avviata tramita apposita comando
-nel terminale, riportato per comodità qui sotto. 
-Come per gli altri codici, è richiesta la presenza di una struttura con le cartelle create automaticamente dagli altri codici satellite
-COMAND UTILI NNI
-- Avvio: nnictl create --config ./config.yml --port 8080
-- Stop: nnictl stop --all
-- Risultati: nnictl experiment show [ID-esperimento]
-- Elenco trial e relativi risultati: nnictl trial ls [ID-esperimento]
+This code aims to train the neural network using nni for automatic experiment management and optimized search of the values in the search_space, 
+containing various parameters related to network management. The execution requires nni version 2.7 and 2 files (config.yml and search_space.json) 
+and is started by a specific command in the terminal, conveniently listed below.
+As with other codes, the presence of a structure with folders automatically created by other satellite codes is required.
 
+USEFUL NNI COMMANDS
+
+- Start: nnictl create --config ./config.yml --port 8080
+- Stop: nnictl stop --all
+- Results: nnictl experiment show [experiment-ID]
+- List of trials and their results: nnictl trial ls [experiment-ID]
+
+
+Using the combined_loss, alpha represents the importance given to the dice_loss
+
+POSSIBLE UPDATES:
+line 87, float16 instead of float32 for the mask
 '''
 # =====================================================================================================
 
-
-# NUOVE MODIFICHE
-# AGGIUNTO: , num_workers=8, pin_memory=True   AI DATALOADER                        - attivo
-# AGGIUNTO: cuDNN benchmarking                                                      - attivo     riduce
-# AGGIUNTO: , bias=False nella unet1 alle convoluzione 2d                           - attivo     non avvertibile come velocità, dimensione non cotnrollata
-
 # =====================================================================================================
-# DEFINIZIONE PAREMETRI E COMANDI INIZIALI INIZIALI
+# INITIAL PARAMETERS AND COMMANDS DEFINITION
 # =====================================================================================================
 n_epochs = 20
-torch.backends.cudnn.benchmark = True # Abilita cuDNN benchmarking per ottimizzazione convoluzioni (selezione automatica miglior algoritmo per calcolo convoluzioni, a seguito di benchmark). Richiede BS e risoluzione costante
-torch.cuda.empty_cache()  # Comando per svuotare cache GPU prima dell'inizio del training
-
+torch.backends.cudnn.benchmark = True  
+torch.cuda.empty_cache()  
 
 # =====================================================================================================
-# DEFINIZIONE FUNZIONI
+# FUNCTION DEFINITION
 # =====================================================================================================
 
-# Creazione classe per dataset
+# Dataset classe creation
 class Dataset_challenge(Dataset):
 
     # The __init__ function is run once when instantiating the UltrasoundDataset class, and it's used to initialize the dataset
@@ -77,39 +75,32 @@ class Dataset_challenge(Dataset):
         assert image_path.split('/')[-1].split('.')[0] == mask_path.split('/')[-1].split('.')[0], "Filename mismatch between image and mask!"
 
         # open image and mask using PIL and convert to numpy array
-        image = np.array(Image.open(image_path)) #Apertuta immagine indicata all'indice come np.array
+        image = np.array(Image.open(image_path)) 
         mask = np.array(Image.open(mask_path))
         
-        # Condizione di controllo per la correzione della dimensione della maschera
-        if mask.ndim > 2:  # controlla se la maschera ha più di due dimensioni
-            mask = mask[:,:,0]  # seleziona solo il primo canale
+        # Control condition for mask size correction
+        if mask.ndim > 2:  # check if the mask has more the 2 dimension
+            mask = mask[:,:,0]  # select only the first channel
         
         image = min_max_normalization(image)
         
         # Binarize the mask to have 0 on the background and 1 on the foreground
-        mask = (mask >0).astype(np.float32)   #Intanto e` gia` binaria
+        mask = (mask >0).astype(np.float32) 
 
         if self.transform:
             augmented = self.transform(image=image, mask=mask)
             image = augmented['image']
-            mask = augmented['mask']
-            
-        # If image tensor is only one channel concatenate image tensor to RGB in channel-first format and make it a float tensor, else just make it a float tensor
-        # you can do this if your model expects RGB images but your dataset is grayscale
-        #if image.shape[0] == 1:
-        #    image = torch.cat((image, image, image), dim=0)                                                   #    SI È TOLTO PER TESTARE RETE SOLO SCALA DI GRIGI
+            mask = augmented['mask']                                                
 
         # Make sure image is tensor
         if type(image) == np.ndarray:
-            #print('Entrato in if type(image) == np.ndarray:')
             image = torch.from_numpy(image)
 
         if type(mask) == np.ndarray:
-            #print('Entrato in if type(mask) == np.ndarray:')
             mask = torch.from_numpy(mask)
 
         # Make sure image is a float tensor, not an integer tensor
-        image = image.float()                       # Si ottiene dimensione di 3, 256, 256
+        image = image.float()                       
         
         # Make sure mask is a float tensor
         mask = mask.float()
@@ -129,8 +120,8 @@ class Dataset_challenge(Dataset):
         return image, mask, file_name
 
 
-# Creazione funzione min_max_normalization
-def min_max_normalization(matrix):   #Funzione di normalizzazione usata in seguito
+# Min_max normalizaziont function
+def min_max_normalization(matrix):   
                 
                 min_value = np.min(matrix)
                 max_value = np.max(matrix)
@@ -141,7 +132,7 @@ def min_max_normalization(matrix):   #Funzione di normalizzazione usata in segui
 
 
 
-# Definizione dell'architettura U-Net
+# U-net architecture definition
 class UNet1(nn.Module):
     """
     U-Net architecture for semantic segmentation.
@@ -239,46 +230,46 @@ class UNet1(nn.Module):
 #======================================
 # Definizione loss functions e metriche
 '''
-Le funzioni seguenti sono relative alla definizione delle funzioni di loss e di valutazione della rete, si fanno 2 precisazioni relative al loro funzionamento
-- Parametro alfa: tutte le funzioni contengono questo parametro, ma solo la combined_loss lo utilizza effettivamente per dare un peso al contributo di Dice_loss e BCELoss. 
-    La sua presenza in tutte le funzioni risulta comunque necessaria per non causare errori quando si richiama criterion fornendo anche alfa, ed è pertanto necessaria
-    a garantire la stabilità dell'esecuzione del codice vista la sua architettura
+The following functions are related to the definition of the network's loss and evaluation functions, with two clarifications about their operation
+- Alpha parameter: all functions contain this parameter, but only the combined_loss actually uses it to weight the contribution of Dice_loss and BCELoss. 
+    Its presence in all functions is still necessary to avoid errors when calling criterion while providing alpha, and it is therefore necessary
+    to ensure the stability of the code execution given its architecture
     
-- Utilizzo .sigmoid(): per diminuire l'utilizzo di risorse da parte della rete si è implementata l'automatic mixed precision implementata da Pytorch. Tuttavia, questa modifica 
-    è incompatibile conj l'utilizzo della loss function BCELoss. Si è quindi modificata la funzione di training in modo da ottenere i logit in uscita dalla rete, senza l'utilizzo
-    di sigmoide, per poter utilizzare la funzione BCEWithLogits, compatibile con AMP. Questo ha infine reso necessaria una piccola modifiche alle funzioni contenenti il calcolo
-    del dice, dove si è reso necessario andare a utuilizzare la funzione sigmoid per rendere possibile il calcolo di questa metrica. 
+- Use of .sigmoid(): to reduce the network's resource usage, the automatic mixed precision implemented by Pytorch was used. However, this change 
+    is incompatible with the BCELoss loss function. Therefore, the training function was modified to obtain the logits output from the network without using
+    the sigmoid, to be able to use the BCEWithLogits function, which is compatible with AMP. This finally required a small modification to the functions containing the 
+    dice calculation, where it was necessary to use the sigmoid function to enable the calculation of this metric.
 '''
 #======================================
 
-# Definizione funzione Dice loss 
+# Dice loss definition
 def dice_loss(outputs, labels, alfa, eps=1e-7):  
     outputs = outputs.sigmoid()
     intersection = torch.sum(outputs * labels)
     union = torch.sum(outputs) + torch.sum(labels)
     
-    if union >0:                                 # Modifica alla funzione effettuata per evitare NaN in caso di assenza di maschere
+    if union >0:                                 # Avoid NaN
         dice_score = 2.0 * intersection / (union + eps)
         dice_loss = torch.clamp(1.0 - dice_score, min=0.0, max=1.0)       
     else:
-        dice_loss=0.0                            # Questa situazione si verifica quando né la maschera né la predizione individuano nulla, per cui la rete ha perfettamente classificato l'immagine
+        dice_loss=0.0                            # Case with empty mask and prediction
         
     return dice_loss
 
-# Funzione per il calcolo della metrica dice
+# Dice definition
 def dice(outputs, labels):
     outputs = outputs.sigmoid()
     intersection = torch.sum(outputs * labels)
     union = torch.sum(outputs) + torch.sum(labels)
     
-    if union >0:                                 # Modifica alla funzione effettuata per evitare NaN in caso di assenza di maschere
+    if union >0:                                 # Avoid NaN
         dice_score = 2.0 * intersection / (union)    
     else:
-        dice_score=1.0                           # Questa situazione si verifica quando né la maschera né la predizione individuano nulla, per cui la rete ha perfettamente classificato l'immagine
+        dice_score=1.0                           # Case with empty mask and prediction
         
     return dice_score
 
-# Funzione per il calcolo della funzione di loss che combina BCE e dice_loss
+# Function to calculate the loss based on BCE and dice_loss
 def combined_loss(outputs, labels, alfa, eps=1e-7):
     outputs_s = outputs.sigmoid()
     intersection = torch.sum(outputs_s * labels)
@@ -289,73 +280,70 @@ def combined_loss(outputs, labels, alfa, eps=1e-7):
     BCE_loss = BCE(outputs, labels)
     return alfa*dice_loss+(1-alfa)*BCE_loss
 
-# Funzione per il calcolo della Binary Cross Entropy
+# Function to calculate the Binary Cross Entropy
 def BCELoss(outputs, labels, alfa):
     BCE = nn.BCEWithLogitsLoss()
     BCE_loss = BCE(outputs, labels)
     return BCE_loss
 
-# Definizione training function
-def train(args, model, device, train_loader, optimizer, epoch,val_loader,criterion, trial_dir,trial_name, file_name, best_dice): # Rivedi parametri in base a cosa varia
+# Training function definition
+def train(args, model, device, train_loader, optimizer, epoch,val_loader,criterion, trial_dir,trial_name, file_name, best_dice):
 
     train_losses = []
     val_losses = []
-    scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.3, patience=args['patience'],threshold=0.5e-2) # Factor indica di quanto moltiplicare il lr se per un numero di epoche pari a patience la rete non presente un miglioramento della metrica superiore a threshold
+    scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.3, patience=args['patience'],threshold=0.5e-2) 
     scaler = GradScaler()
     model.train()
     running_loss = 0.0
     train_progress_bar = tqdm(train_loader, desc=f"Training Epoch {epoch + 1}/{n_epochs}", unit="batch")
     for images, masks, filename in train_progress_bar:
 
-        # Sposta immagini e maschere sul dispotivo
         images, masks = images.to(device), masks.to(device)
         
-        # Azzera il gradiente
         optimizer.zero_grad()
     
-        # Sezione per utilizzo AMP
+        # Section to use AMP
         # Forward pass con autocast (AMP) 
         with autocast():
             
-            #outputs = model(images).sigmoid().squeeze() # Lasciato per evidenziare cambiamento che si è reso necessario per l'uso di AMP, BCE e Dice, come spiegato in precedenza 
+            #outputs = model(images).sigmoid().squeeze() # Original version witout AMP
             outputs = model(images).squeeze()
             loss = criterion(outputs, masks, args['a'])
        
-        
-        # Backward pass con GradScaler              
+        # Backward pass with GradScaler              
         scaler.scale(loss).backward()
         
-    
-        # Modifica pesi con GradScaler
+        # Weigth modification with GradScaler
         scaler.step(optimizer)
         scaler.update()  
 
-        # Aggiorna running loss
+        # Update running loss
         running_loss += loss.item()*images.size(0)
 
-        # Aggiorna progress bar
+        # Update progress bar
         train_progress_bar.set_postfix(loss=running_loss / ((train_progress_bar.n + 1) * train_loader.batch_size))
-        train_loss = running_loss / len(train_loader.dataset)
+    
+    train_loss = running_loss / len(train_loader.dataset)
 
-        # Memorizza la training loss nella lista
-        train_losses.append(train_loss)
+    # Store the training loss in the list
+    train_losses.append(train_loss)
 
-    # Inizio valutazione per salvataggio rete migliore al termine di ogni epoca (vista la dimensione del training set)
+    # Start evaluation to save the best network at the end of each epoch (given the size of the training set)
     model.eval()
     running_loss = 0.0
     running_dice_score = 0.0       
     val_progress_bar = tqdm(val_loader, desc=f"Validation Epoch {epoch + 1}/{n_epochs}", unit="batch")
+
     with torch.no_grad():
             for images, masks, filename in val_progress_bar:
 
-                # Sposta immagini e maschere sul dispotivo
                 images, masks = images.to(device), masks.to(device)
-                #outputs = model(images).sigmoid().squeeze() # Analogamente a sopra, si lascia per evidenziare differenza richiesta da AMP, BCE e Dice
+                #outputs = model(images).sigmoid().squeeze() # Original version without AMP
                 outputs = model(images).squeeze()
                 masks = masks.squeeze()               
                 loss = criterion(outputs, masks, args['a'])
 
-                # Aggiorna running loss e dice score
+                # Update running loss e dice score
                 running_loss += loss.item() * images.size(0)
                 running_dice_score += dice(outputs, masks).item() * images.size(0)   
                 val_progress_bar.set_postfix(loss=running_loss / ((val_progress_bar.n + 1) * val_loader.batch_size))
@@ -364,24 +352,24 @@ def train(args, model, device, train_loader, optimizer, epoch,val_loader,criteri
     dice_score = running_dice_score / len(val_loader.dataset)
     val_losses.append(val_loss)
                 
-    scheduler.step(val_loss)     # Aggiorna scheduler con valore di loss, per la gestione del lr
+    scheduler.step(val_loss)     # Update scheduler with loss value, for lr management
     
-    if dice_score > best_dice: # NB il valore di best_dice viene aggiornato dal ciclo di allenamento lungo le epoche, pertanto NON viene aggiornato qui
-            torch.save(model.state_dict(), os.path.join(trial_dir,trial_name+'.pth'))   # Salvataggio della rete se presente una metrica sul validation set più alta rispetto alle precedenti
+    if dice_score > best_dice: # The value of best_dice is updated by the training loop across epochs, therefore it is NOT updated here
+            torch.save(model.state_dict(), os.path.join(trial_dir,trial_name+'.pth'))   # Save the net if it hase a validation set metric higher than previous one
 
-    # Scrittura valori su terminale (verrà visualizzato anche nell'apposita sezione nni)
+    # Write values to the terminal (will also be displayed in the appropriate nni section)
     print('\n')
     print(f'Epoch {epoch+1}/{n_epochs}, Training Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}, Validation Dice: {dice_score:.4f}')
     print('\n')
     
-    # Scrittura valori in apposito file .txt per agevolare eventuali analisi sull'andamento della rete nel corso dell'allenamento, il file è salvato nella stessa cartella dove si salva la rete allenata
+    # Write values to a specific .txt file to facilitate any analysis on the network's progress during training. The file is saved in the same folder where the trained network is saved
     with open(file_name, 'a') as file:
-        file.write('\n'+str(epoch+1)+'/'+str(n_epochs)+' | '+str(train_loss)+' | : '+str(val_loss)+' | : '+str(dice_score)) # Questo formato agevola l'analisi successiva dei dati tramite script/Excel
+        file.write('\n'+str(epoch+1)+'/'+str(n_epochs)+' | '+str(train_loss)+' | : '+str(val_loss)+' | : '+str(dice_score)) # Specific format to help successive analysis
     
     
     return dice_score
 
-# Definzione funzione di testing. Viene riportata per completezza ma non viene richiamata, siccome si è preferito creare apposito script di testing da avviare al termine dell'allenamento, con caratteristiche più complete
+# Define testing function. It is included for completeness but is not called, as a dedicated testing script with more comprehensive features is preferred to be run at the end of training
 def test_model(args,test_loader, model, criterion, device,log):
         model.eval()
         running_loss = 0.0
@@ -400,21 +388,21 @@ def test_model(args,test_loader, model, criterion, device,log):
         epoch_loss = running_loss / len(test_loader.dataset)
         epoch_dice_score = running_dice_score / len(test_loader.dataset)
         
-        # Salva il risultato nell'apposito file descrittivo della rete
+        # Save the result in the appropriate network description file
         with open(log, 'a') as file:
             file.write('\n Test metrics:      Epoch loss: '+str(epoch_loss)+' | '+'Epoch Dice: '+str(epoch_dice_score))
 
         return epoch_dice_score
 
-# Definizione del main usato da nni per permettere l'esecuzione dei vari trial all'interno di uno scpeficio esperimento
+# Definition of the main function used by nni to allow the execution of various trials within a specific experiment
 def main(args):
     
-    criterion = globals()[args['criterion']]  # Definizione del criterio di loss convertendo la stringa ricevuta nel nome della relativa funzione
+    criterion = globals()[args['criterion']]  # Define the loss criterion by converting the received string into the corresponding function name
     
     working_folder = os.path.dirname(os.path.abspath(__file__))
 
     # =====================================================================================================
-    # Definizione Data Augmentation
+    # DATA AUGMENTATION STRATEGY DEFINITION
     # =====================================================================================================
     
     train_transforms = A.Compose([
@@ -428,8 +416,8 @@ def main(args):
     
 
     # =====================================================================================================
-    # Import training e validation set
-    # Sono stati precedentemente creati da apposito script
+    # TRAINING AND VALIDATION SET IMPORT
+    # They were previousy created by the dedied script
     # =====================================================================================================
     
     train_images_folder = working_folder+'/Dataset/train'+args['path']+'/Blocks_Original'
@@ -437,35 +425,34 @@ def main(args):
     val_images_folder = working_folder+'/Dataset/val'+args['path']+'/Blocks_Original'
     val_masks_folder = working_folder+'/Dataset/val/Blocks_Mask'
     
-    # Stampa dei valori per conferma e controllo
     print('Percorso immagini train: '+train_images_folder)
     print('Percorso maschere train: '+train_masks_folder)
     print('Percorso immagini val: '+val_images_folder)
     print('Percorso maschere val: '+val_masks_folder)
     
-    # Funzione per ottenere i percorsi dei file
+    # Function to get file path
     def get_file_paths(images_dir, masks_dir):
         images = [os.path.join(images_dir, file) for file in sorted(os.listdir(images_dir))]
         masks = [os.path.join(masks_dir, file) for file in sorted(os.listdir(masks_dir))]
         return images, masks
 
-    # Caricamento dei percorsi utilizzando le variabili definite
+    # Loading paths using the defined variables
     train_image_paths, train_mask_paths = get_file_paths(train_images_folder, train_masks_folder)
     val_image_paths, val_mask_paths = get_file_paths(val_images_folder, val_masks_folder)
 
-    # Creazione dei dataset (si assumono definite le classi Dataset_challenge)
+    # Dataset creation
     train_dataset = Dataset_challenge(train_image_paths, train_mask_paths, transform=train_transforms)
     val_dataset = Dataset_challenge(val_image_paths, val_mask_paths, transform=val_transforms)
 
-    # Dimensione del batch
+    # Batch dimension
     BS = 16
 
-    # Creazione dei dataloader
+    # Dataloader creation
     train_loader = DataLoader(train_dataset, batch_size=BS, shuffle=True, num_workers=8, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=BS, shuffle=False, num_workers=8, pin_memory=True)
 
     # =====================================================================================================
-    # Creazione rete e caricamento da modelli precedentemente salvati
+    # Create network and load from previously saved models
     # =====================================================================================================
     if args['rete'] == 1:
         model = UNet1()
@@ -481,20 +468,20 @@ def main(args):
         print("Net type error")
     
     # =====================================================================================================
-    # Definizione parametri e creazione del file descrittivo del trial in corso
-    # Si ricorda che per esperimento si definisce una "classe" con vari tentativi da provare,
-    # un trial sarà un'istanza di questa classe e sarà quindi caratterizzato da parametri precisi scelti 
-    # all'interno di quelli possibili per l'esperimento
+    # Define parameters and create the descriptive file of the ongoing trial
+    # Recall that an experiment is defined as a "class" with various attempts to try,
+    # a trial will be an instance of this class and will therefore be characterized by specific parameters chosen
+    # from those possible for the experiment
     # =====================================================================================================
     
-    # Creazione variabili con informazioni relative all'allenamento, usate in seguito nei file descrittivi della rete che accompagnano la rete salvata
+    # Create variables with training-related information, later used in the descriptive files of the network that accompany the saved network
     trial_id = get_trial_id()
     experiment_id = os.environ.get('NNI_EXP_ID')
     trial_name = experiment_id+'_'+trial_id
     ora_attuale = datetime.now()
     data_ora_stringa = ora_attuale.strftime('%Y-%m-%d %H:%M:%S')
     
-    # Creazione cartella dove salvare la rete e le informazioni relative al training
+    # Create a folder to save the network and training-related information
     info_trial = experiment_id+'/'+trial_id
     trial_dir = os.path.join(working_folder,'modelli_allenati/'+info_trial)
     if not os.path.exists(trial_dir):
@@ -502,48 +489,47 @@ def main(args):
     
     filename = trial_dir+'/'+trial_name+'.txt'
     
-    # Salva in apposito file tutte le informazioni relative al trial, ai parametri scelti e alla rete
+    # Save all information related to the trial, the chosen parameters, and the network in an appropriate file
     with open(filename, 'a') as file:
-        file.write('\n Data allenamento: '+data_ora_stringa+',      Experiment ID: '+experiment_id+',       Trial ID: '+trial_id)
-        file.write('\n ------ Parametri allenamento ------ ')
-        file.write('\n      Loss criterion: '+args['criterion'])
-        file.write('\n      Alfa parameter: '+str(args['a']))                                 
-        file.write('\n      Learning rate: '+str(args['lr']))
-        file.write('\n      Patience: '+str(args['patience']))
-        file.write('\n      B1: '+str(args['b1']))
-        file.write('\n      Rete: '+str(args['rete']))
-        file.write('\n      Dataset path: '+args['path'])
-        file.write('\n      Training Epochs: '+str(n_epochs))
-        file.write('\n\n\n ------ Architettura rete ------')
-        file.write('\n'+rete_string)
-        file.write('\n\n\n ------ Metriche durante epoche allenamento ------')
-        file.write('\n Epoca: '+' | Training Loss: '+' | Validation Loss: '+' | Validation Dice: ')
+        file.write('\n Training Date: ' + data_ora_stringa + ',      Experiment ID: ' + experiment_id + ',       Trial ID: ' + trial_id)
+        file.write('\n ------ Training Parameters ------ ')
+        file.write('\n      Loss criterion: ' + args['criterion'])
+        file.write('\n      Alpha parameter: ' + str(args['a']))                                 
+        file.write('\n      Learning rate: ' + str(args['lr']))
+        file.write('\n      Patience: ' + str(args['patience']))
+        file.write('\n      B1: ' + str(args['b1']))
+        file.write('\n      Network: ' + str(args['rete']))
+        file.write('\n      Dataset path: ' + args['path'])
+        file.write('\n      Training Epochs: ' + str(n_epochs))
+        file.write('\n\n\n ------ Network Architecture ------')
+        file.write('\n' + rete_string)
+        file.write('\n\n\n ------ Metrics During Training Epochs ------')
+        file.write('\n Epoch: ' + ' | Training Loss: ' + ' | Validation Loss: ' + ' | Validation Dice: ')
         file.write('\n')
         
     
     
     # =====================================================================================================
-    # Preparazione e avvio training rete
+    # Final preparation and network training
     # =====================================================================================================
-    # Definizione funzioni per gestire l'allenamento
-    optimizer = Adam(model.parameters(), lr=args['lr'], betas=(args['b1'],0.999))    # Definizione algoritmo di ottimizzazione
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')            # Definizione dispositivo da usare
-    
-    # Invio modello al dispositivo
+    # Function definitions to manage the training
+    optimizer = Adam(model.parameters(), lr=args['lr'], betas=(args['b1'],0.999))    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')            
+
     model = model.to(device) 
     
-    file_metriche = trial_dir+'/'+trial_name+'_metriche'+'.txt'  # Definizione del file dove andare a salvare le metriche relative all'allenamento
+    file_metriche = trial_dir+'/'+trial_name+'_metriche'+'.txt'  # Define the file where training metrics will be saved
     best_dice = 0
     for epoch in range(n_epochs):
         val_dice = train(args, model, device, train_loader, optimizer, epoch,val_loader,criterion, trial_dir, trial_name, file_metriche, best_dice)
         best_dice = val_dice
         print('Report risultati intermedi: '+ str(val_dice))
-        nni.report_intermediate_result(val_dice)                 # Invio a nni del valore di Dice ottenuto al termine dell'epoca di allenamento sul validation set, usato per la visualizzazione ed eventuale early stopping secondo decisione assessor
+        nni.report_intermediate_result(val_dice)                 # Send to nni the Dice value obtained at the end of the training epoch on the validation set, used for visualization and possible early stopping according to assessor's decision
         
     print('Report risultati finali (validation_set): '+ str(best_dice))
-    nni.report_final_result(best_dice)                           # Invio a nni del valore del miglior valore di Dice ottenuto nel corso delle epoche (calculato sul validation set), usato per la visualizzazione dei risultati tramite l'interfaccia di controllo
+    nni.report_final_result(best_dice)                           # Send to nni the best Dice value obtained during the epochs (calculated on the validation set), used for result visualization through the control interface
 
-# Funzione necessaria per nni, usat per la scelta dei parametri all'avvio di un trial
+# Function necessary for nni, used for parameter selection at the start of a trial
 def get_params():
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type = float, default = 0.00009)
@@ -557,7 +543,7 @@ def get_params():
     return args
 
 
-# Avvio del trial tramite richiamo della funzione main, scegliendo ogni volta dei parametri differenti che definiscono il trial
+# Start the trial by calling the main function, each time choosing different parameters that define the trial
 if __name__ == '__main__':
     try:
         tuner_params = nni.get_next_parameter()
