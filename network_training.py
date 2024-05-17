@@ -21,7 +21,7 @@ from datetime import datetime
 import inspect
 
 # =====================================================================================================
-#INFO CODICE
+# CODE INFO
 '''
 This code aims to train the neural network using nni for automatic experiment management and optimized search of the values in the search_space, 
 containing various parameters related to network management. The execution requires nni version 2.7 and 2 files (config.yml and search_space.json) 
