@@ -9997,3 +9997,9 @@ Dataset/train/Blocks_Mask/274_D.png_44.png
 Dataset/train/Blocks_Mask/274_D.png_45.png
 Dataset/train/Blocks_Mask/274_D.png_46.png
 Dataset/train/Blocks_Mask/274_D.png_47.png
+results/_latest
+results/yvc9ajf4/db/nni.sqlite
+results/yvc9ajf4/log/dispatcher.log
+results/yvc9ajf4/log/nnictl_stderr.log
+results/yvc9ajf4/log/nnictl_stdout.log
+results/yvc9ajf4/log/nnimanager.log

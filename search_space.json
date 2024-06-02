@@ -1,9 +1,9 @@
 {
-  "lr": {"_type": "chooice", "_value": [0.00001, 0.00045]},  
-   "patience":{"_type": "choice", "_value": [6]},
+  "lr": {"_type": "chooice", "_value": [0.00001, 0.0045]},  
+   "patience":{"_type": "choice", "_value": [6,3,10]},
    "b1":{"_type": "choice", "_value": [0.9]},
    "rete":{"_type": "choice", "_value": [1]},
    "path":{"_type": "choice", "_value": ["/final"]},
-   "criterion":{"_type": "choice", "_value": ["combined_loss", "dice_loss"]},
+   "criterion":{"_type": "choice", "_value": ["dice_loss"]},
    "a":{"_type": "choice", "_value": [0.5]}
 }
